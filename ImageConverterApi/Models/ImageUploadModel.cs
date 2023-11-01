@@ -1,4 +1,6 @@
-﻿namespace ImageConverterApi.Models
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace ImageConverterApi.Models
 {
     public class ImageUploadModel
     {

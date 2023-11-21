@@ -1,0 +1,82 @@
+{
+	"info": {
+		"_postman_id": "60f632bf-0361-4176-a4c3-2797e9f04bf5",
+		"name": "ImageRepoApi",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "/api/image/upload",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "TargetWidth",
+							"value": "800",
+							"type": "default"
+						},
+						{
+							"key": "TargetHeight",
+							"value": "600",
+							"type": "default"
+						},
+						{
+							"key": "imageFile",
+							"type": "file",
+							"src": "/C:/Dev/Recruitment/ImageRepoApi/Postman/sample1.jpg"
+						},
+						{
+							"key": "TargetFormat",
+							"value": "jpeg",
+							"type": "default"
+						}
+					]
+				},
+				"url": {
+					"raw": "https://localhost:7062/api/image/upload",
+					"protocol": "https",
+					"host": [
+						"localhost"
+					],
+					"port": "7062",
+					"path": [
+						"api",
+						"image",
+						"upload"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "/api/image/get",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "https://localhost:7062/api/image/get?id=26245a6e-a924-4652-b0b9-1c38aa19a420",
+					"protocol": "https",
+					"host": [
+						"localhost"
+					],
+					"port": "7062",
+					"path": [
+						"api",
+						"image",
+						"get"
+					],
+					"query": [
+						{
+							"key": "id",
+							"value": "26245a6e-a924-4652-b0b9-1c38aa19a420"
+						}
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

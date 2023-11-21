@@ -1,43 +1,66 @@
 # About
-This repository contains a skeleton project to be used as a starting point for a take-home coding test.
-
-It is intended for candidates applying for a .NET back-end software development role at Humanforce.
+This repository contains a sample project used as a basis for a take-home coding test. It is intended for candidates applying for a .NET back-end software development role at Humanforce.
 
 # Scenario
-The task is to build a web API backend application using dotnet core. The purpose of the API is to store images and perform a few processing tasks such as converting and resizing.
+This Web API project implements a basic online repository for image files. Images can be uploaded, resized and converted, and retrieved from the API.
 
-The API should have 3 endpoints:
+# Instructions
+Start by cloning this repository and ensure that you can build and run the application locally. Open the Postman collection from the `Postman` subfolder and make sure the application is working correctly.
 
-| Endpoint                 | Description |
-|--------------------------|-------------|
-| `POST /api/image/upload` | Accepts an image along with parameters to specify desired image format, desired dimensions, and whether to keep aspect ratio. Processes and stores the image in the database and returns a permanent unique ID for the converted image.
-| `GET /api/image/get`     | Allows an image to be retrieved by ID and returned in its native format with the relevant content type (to allow embedding in a webpage). |
-| `GET /api/image/info`    | Retrieves information about an image. E.g. its format, persisted size, dimensions, date/time uploaded, and any other info that may be relevant. |
+The tasks below have an increasing level of difficulty. Complete any or all of them in any order you like according to the amount of time you have available.
 
-As a bonus exercise, add authentication to the application using a JWT. The database should include a table to hold the pre-authenticated API callers. Use any one of the typical signing algorithms supported by the Postman application (e.g. HS256, RS256, etc.).
+Be sure to add new unit tests to the `UnitTests` project to validate any new functionality that you introduce to the application.
 
-# Project Template
-This repo contains an existing project you can use as a starting point.
+## Task 1 - Add KeepAspectRatio parameter
+Add a new parameter to the existing `/api/image/upload` endpoint named `KeepAspectRatio`. Make changes to the code to implement this parameter as follows:
 
-In addition to the project skeleton, see also:
-* ImageController.cs - This controller has stubs for the endpoints listed above. Make as many changes as you like to suit your approach (e.g. input & output types, async code, etc.)
-* ImageService.cs - This class provides an example of how to use the SkiaSharp image library for converting and resizing images. Most of what you need is here already so you shouldn't have to spend time discovering how to use the library, but you will need to implement the `keepAspectRatio` parameter in the `ResizeImage` method.
-* ImageUploadModel.cs - A model class that can be used to accept the incoming parameters for the `Upload` endpoint. Add more properties & annotations, adapt this model as needed.
+* If `KeepAspectRatio` is true the resized image should maintain its original aspect ratio after being resized.
+* If `TargetWidth` is a positive non-zero number then `TargetHeight` should be ignored, and the new height is determined automatically.
+* If `TargetWidth` is invalid (zero or negative) then the `TargetHeight` parameter should be used to determine the new width automatically.
+* If both `TargetWidth` and `TargetHeight` are invalid then the API should return a Bad Reqest.
 
-# Unit Tests
-The Visual Studio solution contains a UnitTests project. Wherever possible please add a few unit tests for your code. Segregate the tests into multiple classes to keep things organised if required.
+## Task 2 - Add Info endpoint
+Add a new API endpoint called `Info` to the ImageController (GET `/api/image/info`)
 
-The ControllerTests.cs file contains some example code for unit testing a file upload using `multipart/form-data`. Do not feel that you have to use this approach - the code is there purely to save you time if you choose to employ that method, since setting up a unit test to populate the `Request.Form.Files` property is slightly more complicated than other approaches.
+The new endpoint should behave as follows:
+* Lookup an image from the database by its ID.
+* Return a 404 if the image ID is not valid.
+* For valid images, return a JSON object containing some information about the image:
+  - Original filename
+  - Format
+  - DateTime created (in UTC)
+  - Width
+  - Height
+  - Stored size in bytes
 
-# Before you start
-There are multiple approaches when it comes to uploading binary data over HTTP (e.g. JSON with encoding, multipart/form-data, raw binary payload + url params, BSON, etc.). Choose whichever method you prefer. There is not necessarily any right or wrong way, but be prepared to talk about the pros and cons of the method that you choose.
+## Task 3 - Prevent saving duplicate images
+Add a check in the `/api/image/upload` to prevent the exact same image being saved twice.
+* If an image is uploaded that is already in the database then the endpoint should return the ID of the pre-existing image. Include a new boolean field in the response called `AlreadyExists` to indicate that the duplicate was detected.
+* The check for equality should be done based on the image data _after_ resizing and converting. The API should NOT reject the same image if the TargetWidth, TargetHeight or TargetFormat parameters are different to what was uploaded previously.
 
-Be aware that the SkiaSharp image library has some limitations in its default configuration. While it can read a variety of image formats, it can only encode PNG and JPEG without taking extra steps to support more formats. Please do not worry about this limitation for this exercise, it is perfectly OK to support PNG and JPEG only. Supporting a large number of formats is not the focus for this task.
+There are many ways this requirement can be implemented, choose any approach you like. _HINT: Consider adding a field to the Images database table to store a hash._
 
-You may use whichever database engine you like. EntityFrameworkCore is the preferred library for DB access, please use it if you can. In this case be sure to employ the code-first approach and include your DbContext and model classes in the repo. Regardless of what you use, make sure you include all database related code & scripts that are required to deploy your finished project.
+## Task 4 - Add encryption at rest
+Implement encryption at rest in the database to protect the image data.
+* Encryption should be added to the `Data` field of the Images table, other fields may remain unencrypted.
+* Use the AES symmetric encryption algorithm with a 256 bit key.
+* Store the key material in the appSettings.json file.
+* Encryption should be transparent to the callers of the API. I.e. data should be automatically encrypted when imported via the `/upload` endpoint, and decrypted on the fly when downloaded from the `/get` endpoint.
 
-This skeleton project is provided just to help get you started. You do not have to conform to any styles or patterns used here, we want to see what you believe is best. Feel free to make as many changes as you like to show-case your knowledge. If you want to throw away this template and start from scratch that's totally fine too!
+## Task 5 - Add authentication
+Add authentication to the `/api/image/upload` endpoint using a JWT.
+* The JWT audience and expiry should be validated.
+* Add a new column to the Images database table to hold the username of the person who uploaded the image. Return this data in the `/info` endpoint (if you have implemented it).
+* Choose one of the following two approaches:
+  - Integrate with an existing identity provider of your choice (e.g. Okta, Auth0, Microsoft, AWS Cognito, etc.), OR 
+  - Use self-signed JWTs, storing the public key (or HMAC secret) in the appSettings.json file. Plug your private key or HMAC secret into the Postman application to generate the tokens.
 
-If you have any questions please don't hestitate to reach out.
+# Guidelines
+* Complete only the tasks that you feel confident with (they do not have to be done in order).
+* Avoid spending much more than about 6 hours total.
+* Be sure to complete individual tasks in full (including unit tests) before moving on to other tasks. A single fully-implemented task is better than multiple incomplete tasks.
+* Feel free to make any changes you like to the existing code or project structure, nothing is set in stone.
+* Submit your code by sending us a URL to a fork of this repo, or by zipping your local working directory.
+* If you have any issues or questions don't hesitate to reach out.
 
 Good luck!

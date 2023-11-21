@@ -6,7 +6,6 @@ namespace ImageConverterApi.Models
     {
         public int TargetWidth { get; set; }
         public int TargetHeight { get; set; }
-
-        // TODO
+        public string? TargetFormat { get; set; }
     }
 }

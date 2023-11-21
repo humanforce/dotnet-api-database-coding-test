@@ -1,21 +1,15 @@
-using ImageConverterApi.Controllers;
-using ImageConverterApi.Services;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
-using Moq;
-using Microsoft.Extensions.Primitives;
-using ImageConverterApi.Models;
+using Storage;
+using Microsoft.Extensions.DependencyInjection;
+using Newtonsoft.Json.Linq;
+using Microsoft.EntityFrameworkCore;
+using System.Net;
 
 namespace UnitTests
 {
     [TestClass]
-    public class ControllerTests
+    public class Tests
     {
-        private readonly Mock<ILogger<ImageController>> _logger;
-        private readonly ImageService _imageService;
-
-        private readonly byte[] TestPngImage = new byte[]
+        private static readonly byte[] TestPngImage = new byte[]
         {
             0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,0x00,0x00,0x00,0x0D,0x49,0x48,0x44,0x52,0x00,0x00,0x00,0x10,0x00,0x00,0x00,0x10,0x08,0x06,0x00,0x00,0x00,0x1F,0xF3,0xFF,
             0x61,0x00,0x00,0x00,0x04,0x67,0x41,0x4D,0x41,0x00,0x00,0xAF,0xC8,0x37,0x05,0x8A,0xE9,0x00,0x00,0x00,0x19,0x74,0x45,0x58,0x74,0x53,0x6F,0x66,0x74,0x77,0x61,0x72,
@@ -44,63 +38,94 @@ namespace UnitTests
             0x63,0x00,0x00,0x00,0x00,0x49,0x45,0x4E,0x44,0xAE,0x42,0x60,0x82
         };
 
-        public ControllerTests()
+
+        private readonly WebAppFactory _webApp = new WebAppFactory();
+
+
+        [TestMethod]
+        public async Task UploadImageShouldReturnBadRequestWhenTargetDimensionsInvalid()
         {
-            _logger = new Mock<ILogger<ImageController>>();
-            _imageService = new ImageService();
+            var client = _webApp.CreateClient();
+            var content = new MultipartFormDataContent
+            {
+                { new StringContent("png"), "targetFormat" },
+                { new StreamContent(new MemoryStream(TestPngImage)), "imageFile", "test.png" }
+            };
+
+            var response = await client.PostAsync("/api/image/upload", content);
+            Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
         }
 
         [TestMethod]
-        public void UploadActionReturnsBadRequestWhenParametersInvalid()
+        public async Task UploadImageShouldReturnBadRequestWhenTargetFormatInvalid()
         {
-            // create an instance of the ImageController
-            var controller = new ImageController(_logger.Object, _imageService);
+            var client = _webApp.CreateClient();
+            var content = new MultipartFormDataContent
+            {
+                { new StringContent("INVALID"), "targetFormat" },
+                { new StringContent("100"), "targetWidth" },
+                { new StringContent("100"), "targetHeight" },
+                { new StreamContent(new MemoryStream(TestPngImage)), "imageFile", "test.png" }
+            };
 
-            // create an empty, uninitialised model
-            var model = new ImageUploadModel();
+            var response = await client.PostAsync("/api/image/upload", content);
+            Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+        }
 
-            // call the Upload action
-            var result = controller.Upload(model);
+        [TestMethod]
+        public async Task UploadImageShouldReturnBadRequestWhenImageFileMissing()
+        {
+            var client = _webApp.CreateClient();
+            var content = new MultipartFormDataContent
+            {
+                { new StringContent("png"), "targetFormat" },
+                { new StringContent("100"), "targetWidth" },
+                { new StringContent("100"), "targetHeight" },
+                { new StreamContent(new MemoryStream()), "imageFile", "test.png" }
+            };
 
-            // it should return a BadRequest
-            Assert.IsTrue(result is BadRequestResult);
+            var response = await client.PostAsync("/api/image/upload", content);
+            Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
         }
 
 
-        //[TestMethod]
-        public void ExampleCodeForFileUpload()
+        [TestMethod]
+        public async Task UploadImageShouldSaveToDatabase()
         {
-            // This method is not a complete or working test. It shows how to simulate a multipart/form-data request when invokving a controller manually for a unit test.
-            // You do not have to use multipart/form-data, but if you do then you can use this code to make unit tests for the ImageController.Upload method.
-
-            var httpContext = new DefaultHttpContext();
-
-            using var ms = new MemoryStream(TestPngImage);
-            var files = new FormFileCollection
+            var client = _webApp.CreateClient();
+            var content = new MultipartFormDataContent
             {
-                new FormFile(ms, 0, ms.Length, "ImageData", "test.png")
-            };
-            httpContext.Request.Form = new FormCollection(new Dictionary<string, StringValues>(), files);
-
-            var controllerContext = new ControllerContext()
-            {
-                HttpContext = httpContext
+                { new StringContent("png"), "targetFormat" },
+                { new StringContent("100"), "targetWidth" },
+                { new StringContent("100"), "targetHeight" },
+                { new StreamContent(new MemoryStream(TestPngImage)), "imageFile", "test.png" }
             };
 
-            var controller = new ImageController(_logger.Object, _imageService)
-            {
-                ControllerContext = controllerContext
-            };
+            var response = await client.PostAsync("/api/image/upload", content);
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
 
-            var model = new ImageUploadModel
-            {
-                TargetHeight = 100,
-                TargetWidth = 100
-            };
+            var responseStr = await response.Content.ReadAsStringAsync();
+            Assert.IsFalse(string.IsNullOrWhiteSpace(responseStr));
 
-            var result = controller.Upload(model);
+            var responseObj = JObject.Parse(responseStr);
+            Assert.IsNotNull(responseObj);
+            Assert.IsTrue(responseObj.ContainsKey("imageId"));
+            var imageId = Guid.Parse(responseObj["imageId"]!.ToString());
 
-            Assert.IsTrue(result is OkObjectResult);
+            using var scope = _webApp.Services.CreateScope();
+            using var dbContext = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
+            var image = await dbContext.Images.FirstOrDefaultAsync(i => i.ImageId == imageId);
+            Assert.IsNotNull(image);
         }
+
+
+        [TestMethod]
+        public async Task GetNonExistentImageIdShouldReturn404()
+        {
+            var client = _webApp.CreateClient();
+            var response = await client.GetAsync("/api/image/get?id=00000000-0000-0000-0000-000000000000");
+            Assert.AreEqual(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+        }
+
     }
 }

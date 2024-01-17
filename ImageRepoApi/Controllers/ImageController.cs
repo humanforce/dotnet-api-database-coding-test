@@ -27,7 +27,7 @@ namespace ImageConverterApi.Controllers
         public async Task<IActionResult> Upload([FromForm] ImageUploadModel model, IFormFile imageFile)
         {
             // Validate input
-            if (model.TargetWidth <= 0 || model.TargetHeight <= 0)
+            if (model.TargetWidth <= 0 && model.TargetHeight <= 0)
                 return BadRequest("Invalid target dimensions");
             
             if (string.IsNullOrEmpty(model.TargetFormat) || !Regex.IsMatch(model.TargetFormat, "png|jpeg", RegexOptions.IgnoreCase))
@@ -61,6 +61,16 @@ namespace ImageConverterApi.Controllers
 
             // Return the image with the correct content type
             return File(image.Data, $"image/{image.ImageFormat}");
+        }
+
+        [HttpGet("{id:}")]
+        public async Task<IActionResult> Info(Guid id)
+        {
+            var image = await _dbContext.Images.FirstOrDefaultAsync(i => i.ImageId == id);
+            if (image == null || image.Data == null)
+                return NotFound();
+
+            return Ok(_imageService.GetImageInfo(image));
         }
 
     }

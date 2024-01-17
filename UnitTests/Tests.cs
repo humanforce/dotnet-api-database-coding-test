@@ -3,6 +3,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json.Linq;
 using Microsoft.EntityFrameworkCore;
 using System.Net;
+using Storage.Entities;
+using Newtonsoft.Json;
+using ImageRepoApi.Models;
+
 
 namespace UnitTests
 {
@@ -73,6 +77,22 @@ namespace UnitTests
         }
 
         [TestMethod]
+        public async Task UploadImageShouldReturnBadRequestWhenTargetHeighInvalid()
+        {
+            var client = _webApp.CreateClient();
+            var content = new MultipartFormDataContent
+            {
+                { new StringContent("INVALID"), "targetFormat" },
+                { new StringContent("100"), "targetWidth" },
+                { new StringContent("a"), "targetHeight" },
+                { new StreamContent(new MemoryStream(TestPngImage)), "imageFile", "test.png" }
+            };
+
+            var response = await client.PostAsync("/api/image/upload", content);
+            Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+        }
+
+        [TestMethod]
         public async Task UploadImageShouldReturnBadRequestWhenImageFileMissing()
         {
             var client = _webApp.CreateClient();
@@ -85,6 +105,42 @@ namespace UnitTests
             };
 
             var response = await client.PostAsync("/api/image/upload", content);
+            Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+        }
+
+        [TestMethod]
+        public async Task UploadImageReturnsBadRequestWhenTargetHeighZero()
+        {
+            var client = _webApp.CreateClient();
+            var content = new MultipartFormDataContent
+            {
+                { new StringContent("png"), "targetFormat" },
+                { new StringContent("40"), "targetWidth" },
+                { new StringContent("0"), "targetHeight" },
+                { new StringContent("ture"), "keepAspectRatio" },
+                { new StreamContent(new MemoryStream(TestPngImage)), "imageFile", "test.png" }
+            };
+
+            var response = await client.PostAsync("/api/image/upload", content);
+
+            Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+        }
+
+        [TestMethod]
+        public async Task UploadImageReturnsBadRequestWhenTargetWidthInvalid()
+        {
+            var client = _webApp.CreateClient();
+            var content = new MultipartFormDataContent
+            {
+                { new StringContent("png"), "targetFormat" },
+                { new StringContent("a"), "targetWidth" },
+                { new StringContent("20"), "targetHeight" },
+                { new StringContent("ture"), "keepAspectRatio" },
+                { new StreamContent(new MemoryStream(TestPngImage)), "imageFile", "test.png" }
+            };
+
+            var response = await client.PostAsync("/api/image/upload", content);
+
             Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
         }
 
@@ -118,6 +174,138 @@ namespace UnitTests
             Assert.IsNotNull(image);
         }
 
+        [TestMethod]
+        public async Task UploadImageShouldReturnBadRequestWhenBothDimentionsAreInvalid()
+        {
+            var client = _webApp.CreateClient();
+            var content = new MultipartFormDataContent
+            {
+                { new StringContent("png"), "targetFormat" },
+                { new StringContent("-90"), "targetWidth" },
+                { new StringContent("0"), "targetHeight" },
+                { new StringContent("true"), "keepAspectRatio" },
+                { new StreamContent(new MemoryStream(TestPngImage)), "imageFile", "test.png" }
+            };
+
+            var response = await client.PostAsync("/api/image/upload", content);
+            Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+        }
+
+        [TestMethod]
+        public async Task UploadImageShouldKeepRatioWhenTargetWidthPositive()
+        {
+            var client = _webApp.CreateClient();
+            var content = new MultipartFormDataContent
+            {
+                { new StringContent("png"), "targetFormat" },
+                { new StringContent("90"), "targetWidth" },
+                { new StringContent("60"), "targetHeight" },
+                { new StringContent("true"), "keepAspectRatio" },
+                { new StreamContent(new MemoryStream(TestPngImage)), "imageFile", "test.png" }
+            };
+
+            var response = await client.PostAsync("/api/image/upload", content);
+            var image = await GetImageFromResponse(response);
+            Assert.AreEqual(90, image.Width);
+            Assert.AreEqual(90, image.Height);
+        }
+
+        [TestMethod]
+        public async Task UploadImageShouldKeepRatioWhenTargetWidthNegative()
+        {
+            var client = _webApp.CreateClient();
+            var content = new MultipartFormDataContent
+            {
+                { new StringContent("png"), "targetFormat" },
+                { new StringContent("-90"), "targetWidth" },
+                { new StringContent("60"), "targetHeight" },
+                { new StringContent("true"), "keepAspectRatio" },
+                { new StreamContent(new MemoryStream(TestPngImage)), "imageFile", "test.png" }
+            };
+
+            var response = await client.PostAsync("/api/image/upload", content);
+            var image = await GetImageFromResponse(response);
+            Assert.AreEqual(60, image.Width);
+            Assert.AreEqual(60, image.Height);
+        }
+
+        [TestMethod]
+        public async Task UploadImageShouldKeepRatioWhenTargetWidthZero()
+        {
+            var client = _webApp.CreateClient();
+            var content = new MultipartFormDataContent
+            {
+                { new StringContent("png"), "targetFormat" },
+                { new StringContent("0"), "targetWidth" },
+                { new StringContent("60"), "targetHeight" },
+                { new StringContent("true"), "keepAspectRatio" },
+                { new StreamContent(new MemoryStream(TestPngImage)), "imageFile", "test.png" }
+            };
+
+            var response = await client.PostAsync("/api/image/upload", content);
+            var image = await GetImageFromResponse(response);
+
+            Assert.AreEqual(60, image.Width);
+            Assert.AreEqual(60, image.Height);
+        }
+
+        [TestMethod]
+        public async Task UploadImageShouldNotKeepRatio()
+        {
+            var client = _webApp.CreateClient();
+            var content = new MultipartFormDataContent
+            {
+                { new StringContent("png"), "targetFormat" },
+                { new StringContent("90"), "targetWidth" },
+                { new StringContent("60"), "targetHeight" },
+                { new StringContent("false"), "keepAspectRatio" },
+                { new StreamContent(new MemoryStream(TestPngImage)), "imageFile", "test.png" }
+            };
+
+            var response = await client.PostAsync("/api/image/upload", content);
+            var image = await GetImageFromResponse(response);
+            Assert.AreEqual(90, image.Width);
+            Assert.AreEqual(60, image.Height);
+        }
+
+        [TestMethod]
+        public async Task GetimageInfo()
+        {
+            var client = _webApp.CreateClient();
+            var content = new MultipartFormDataContent
+            {
+                { new StringContent("png"), "targetFormat" },
+                { new StringContent("100"), "targetWidth" },
+                { new StringContent("40"), "targetHeight" },
+                { new StringContent("true"), "keepAspectRatio" },
+                { new StreamContent(new MemoryStream(TestPngImage)), "imageFile", "test.png" }
+            };
+
+            var response = await client.PostAsync("/api/image/upload", content);
+            var image = await GetImageFromResponse(response);
+
+            var getInfoResult = await client.GetAsync($"/api/image/info/{image.ImageId}");
+            var responseContent = await getInfoResult.Content.ReadAsStringAsync();
+            var imageInfo = JsonConvert.DeserializeObject<ImageInfo>(responseContent);
+
+            Assert.AreEqual(100, imageInfo?.Width);
+            Assert.AreEqual(100, imageInfo?.Height);
+            Assert.AreEqual("png", imageInfo?.Format);
+            Assert.AreEqual("test.png", imageInfo?.OriginalFilename);
+        }
+
+
+        private async Task<Image> GetImageFromResponse(HttpResponseMessage response)
+        {
+            var responseStr = await response.Content.ReadAsStringAsync();
+            var responseObj = JObject.Parse(responseStr);
+            var imageId = Guid.Parse(responseObj["imageId"]!.ToString());
+
+            using var scope = _webApp.Services.CreateScope();
+            using var dbContext = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
+            var image = await dbContext.Images.FirstOrDefaultAsync(i => i.ImageId == imageId);
+            return image ?? new Image();
+        }
 
         [TestMethod]
         public async Task GetNonExistentImageIdShouldReturn404()
@@ -126,6 +314,5 @@ namespace UnitTests
             var response = await client.GetAsync("/api/image/get?id=00000000-0000-0000-0000-000000000000");
             Assert.AreEqual(System.Net.HttpStatusCode.NotFound, response.StatusCode);
         }
-
     }
 }

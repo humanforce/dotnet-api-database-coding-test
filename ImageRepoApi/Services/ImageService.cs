@@ -1,4 +1,5 @@
 ﻿using ImageConverterApi.Models;
+using ImageRepoApi.Models;
 using SkiaSharp;
 using Storage;
 using Storage.Entities;
@@ -18,15 +19,18 @@ namespace ImageConverterApi.Services
         {
             if (!Enum.TryParse<SKEncodedImageFormat>(model.TargetFormat, true, out var format))
                 throw new ArgumentException($"Invalid image format: {model.TargetFormat}");
-            
-            var resizedImage = ResizeImage(imageData, format, model.TargetWidth, model.TargetHeight);
+
+            using var img = SKImage.FromEncodedData(imageData);
+
+            var (targetWidth, targetHeight) = GetTargetImageDimentions(model, img.Height, img.Width);
+            var resizedImage = ResizeImage(img, format, targetWidth, targetHeight);
             var image = new Image
             {
                 CreatedAt = DateTime.UtcNow,
                 Data = resizedImage,
                 FileName = fileName,
-                Width = model.TargetWidth,
-                Height = model.TargetHeight,
+                Width = targetWidth,
+                Height = targetHeight,
                 ImageFormat = format.ToString().ToLower()
             };
 
@@ -36,11 +40,36 @@ namespace ImageConverterApi.Services
             return image.ImageId;
         }
 
-
-        private byte[] ResizeImage(Stream sourceImage, SKEncodedImageFormat newFormat, int newWidth, int newHeight)
+        public ImageInfo GetImageInfo(Image image)
         {
-            using var img = SKImage.FromEncodedData(sourceImage);
-            using var resizedImg = ResizeImage(img, newWidth, newHeight);
+            var imageStoredSize = image.Data != null
+                ? image.Data.Length
+                : 0;
+            return new ImageInfo
+                (image.FileName ?? string.Empty, image.ImageFormat ?? string.Empty, image.CreatedAt, image.Width, image.Height, imageStoredSize);
+        }
+
+        private (int targetWidth, int targetHeight) GetTargetImageDimentions(ImageUploadModel model, int sourceImageHeight, int sourceImageWidth)
+        {
+            var targetWidth = model.TargetWidth;
+            var targetHeight = model.TargetHeight;
+            if (model.KeepAspectRatio)
+            {
+                //Assuming img dimentions are W:H
+                targetHeight = targetWidth > 0
+                    ? (targetWidth * sourceImageHeight) / sourceImageWidth
+                    : targetHeight;
+
+                targetWidth = targetWidth <= 0
+                    ? (sourceImageWidth * targetHeight) / sourceImageHeight
+                    : targetWidth;
+            }
+            return (targetWidth, targetHeight);
+        }
+
+        private byte[] ResizeImage(SKImage sourceImage, SKEncodedImageFormat newFormat, int newWidth, int newHeight)
+        {
+            using var resizedImg = ResizeImage(sourceImage, newWidth, newHeight);
             using var data = resizedImg.Encode(newFormat, 100);
             return data.ToArray();
         }
